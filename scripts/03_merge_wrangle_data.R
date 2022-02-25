@@ -40,7 +40,8 @@ clean_edata <- function(data, type){
   if (type == "smd"){
     
     out <- data %>% 
-      mutate(prefecture = str_remove_all(district, "第.+") %>% str_trim()) 
+      mutate(prefecture = str_remove_all(district, "第.+") %>% str_trim(),
+             municipality = ifelse(district == "大阪府第１区" & municipality == "大阪市生野区", "大阪市東成区", municipality)) 
     
   } else if (type == "pr"){
     
@@ -135,10 +136,7 @@ ele2021_added <- bind_rows(
 # Merge data --------------------------------------------------------------
 
 e2017muncode <- ele2017_added %>% 
-  full_join(mun2017, by = c("prefecture", "munname")) %>% 
-  # fix a strange case of missing
-  mutate(smd = ifelse(munname == "大阪市東成区", "大阪府第１区", smd), 
-         pr  = ifelse(munname == "大阪市東成区", "大阪府", pr))
+  full_join(mun2017, by = c("prefecture", "munname")) 
 
 e2017muncode %>% 
   filter(is.na(prefecture) | is.na(munname) | is.na(smd) | is.na(pr) | is.na(muncode))
