@@ -7,13 +7,10 @@ library(tidyverse)
 # Load data ---------------------------------------------------------------
 
 load("output/election_data.RData")
-estats <- readRDS("output/eStat_data.RDS")
 e2017muncode <- readRDS("output/e2017muncode")
 e2021muncode <- readRDS("output/e2021muncode")
 
 # Calculate weights -------------------------------------------------------
-
-data <- smd2017
 
 clean_edata <- function(data){
   
@@ -74,7 +71,7 @@ smd2017_weights <- bind_rows(
   clean_edata(smd2017) %>% filter(!(munname == "川崎市中原区・高津区" & district == "神奈川県第18区")),
   special_cases
 ) %>% 
-  group_by(prefecture, district) %>% 
+  group_by(prefecture, munname) %>% 
   mutate(weight = vote_total / sum(vote_total)) %>% 
   ungroup()
 
