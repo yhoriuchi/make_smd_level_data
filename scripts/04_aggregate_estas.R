@@ -104,9 +104,9 @@ estats_rev3 <- estats_rev2 %>%
   mutate(temp = case_when(prefecture == "福岡県" & munname %in% c("那珂川市", "那珂川町") & year == 2018 ~ 1,
                           TRUE ~ NA_real_)) %>% 
   mutate(across(A2101:D320406, ~ifelse(!is.na(temp), max(.x, na.rm = TRUE), .x))) %>% 
-  filter(!munname == "那珂川町") %>% 
+  filter(!(prefecture == "福岡県" & munname == "那珂川町" & year == 2018)) %>% 
   select(-temp) %>% 
-
+  
   group_by(id, year) %>% 
   fill(D2201) %>% 
   mutate(across(c(C120110, D320101, D320108, D320113, D320115, D320122, D320406), ~max(.x, na.rm = TRUE) * weight)) %>% 
@@ -125,5 +125,35 @@ colSums(is.na(estats_rev3))
 
 remove(list= ls()[!(ls() %in%c("estats_rev3", "e2017muncode", "e2021muncode"))])
 
+estats_smd2017 <- e2017muncode %>% 
+  mutate(muncode = ifelse(muncode == "04216", "04423", muncode)) %>%      # 宮城県富谷市(04216) <-- 宮城県富谷町(04423)
+  left_join(estats_rev3 %>% 
+              select(-prefecture, -munname) %>% 
+              filter(year == 2015), by = "muncode")
+
+estats_smd2021 <- e2021muncode %>% 
+  left_join(estats_rev3 %>% 
+              select(-prefecture, -munname) %>% 
+              filter(year == 2018), by = "muncode")
+
+colSums(is.na(estats_smd2017))
+colSums(is.na(estats_smd2021))
+
+estats_aggregated <- bind_rows(
+  estats_smd2017 %>% 
+    group_by(prefecture, smd) %>% 
+    summarise(across(A2101:D320406, ~sum(weight * .x)), .groups = "drop") %>% 
+    mutate(year = 2017),
+  estats_smd2021 %>% 
+    group_by(prefecture, smd) %>% 
+    summarise(across(A2101:D320406, ~sum(weight * .x)), .groups = "drop") %>% 
+    mutate(year = 2021)
+)
+  
+colSums(is.na(estats_aggregated))
+
+# Save data ---------------------------------------------------------------
+
+write_csv(estats_aggregated, "output/estats_aggregated.CSV")
 
 
