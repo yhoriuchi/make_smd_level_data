@@ -26,7 +26,9 @@ clean_muncode <- function(data){
            munname = ifelse(!is.na(name1), paste0(name1, name2), name2)) %>% 
     filter(!(!is.na(name1) & is.na(name2))) %>% 
     select(-name1, -name2) %>% 
-    filter(!(munname %in% c("特別区部", "色丹村", "留夜別村", "留別村", "紗那村", "蘂取村")))
+    filter(!(munname %in% c("特別区部", "色丹村", "留夜別村", "留別村", "紗那村", "蘂取村"))) %>% 
+    # 北方領土の泊村（国後郡）は、古宇郡の泊村と異なるので注意
+    filter(!muncode == "01696")
   
 }
 
@@ -35,30 +37,27 @@ mun2021 <- clean_muncode(muncode2021)
 
 # Clean election data -----------------------------------------------------
 
-clean_edata <- function(data, type){
+clean_edata <- function(data){
   
-  if (type == "smd"){
-    
-    out <- data %>% 
-      mutate(prefecture = str_remove_all(district, "第.+") %>% str_trim(),
-             municipality = ifelse(district == "大阪府第１区" & municipality == "大阪市生野区", "大阪市東成区", municipality)) 
-    
-  } else if (type == "pr"){
-    
-    out <- data %>% 
-      mutate(prefecture = district) 
-    
-  } else {
-    
-    stop("type should be either smd or pr")
-  }
-  
-  out <- out %>% 
+  out <- data %>% 
+    mutate(prefecture = str_remove_all(district, "第.+") %>% str_trim(),
+           
+           # Error in the original data: NHKのサイトで間違いを確認
+           municipality = ifelse(district == "大阪府第１区" & municipality == "大阪市生野区", "大阪市東成区", municipality),
+           
+           # https://ja.wikipedia.org/wiki/%E6%96%B0%E6%BD%9F%E7%9C%8C%E7%AC%AC4%E5%8C%BA
+           # 新潟４区の北区（旧横越町域）は有権者数が僅少とのこと
+           municipality = ifelse(str_detect(municipality, "新潟市江南区") & 
+                                   str_detect(municipality, "新潟市北区"), "新潟市江南区", municipality)
+           
+    ) %>% 
     select(prefecture, 
            "munname" = municipality, 
-           district) %>% 
-    distinct() %>% 
+           district, 
+           votes) %>% 
     filter(!str_detect(munname, "合計")) %>% 
+    
+    # Cleaning of municipality names
     mutate(munname = str_remove_all(munname, " +|　+"),
            munname = str_remove_all(munname, "\\(.+\\)"),
            munname = str_remove_all(munname, "\\（.+\\）"),
@@ -79,76 +78,71 @@ clean_edata <- function(data, type){
            munname = ifelse(prefecture == "鹿児島県" & munname == "清水町", "湧水町", munname),
            munname = ifelse(prefecture == "東京都" & munname == "稲敷市", "稲城市", munname),
            munname = str_trim(munname)
-    ) 
-  
-    names(out)[3] <- type
+    ) %>% 
     
-    return(out)
+    # Aggregate votes 
+    group_by(prefecture, munname, district) %>% 
+    summarise(vote_total = sum(votes), .groups = "drop")
 
 }
 
-ele2017 <- full_join(
-  clean_edata(smd2017, "smd"), 
-  clean_edata(pr2017, "pr")
-) %>% 
-  mutate(pr = ifelse(is.na(pr) & !is.na(prefecture), prefecture, pr))
+ele2017 <- clean_edata(smd2017)
+ele2021 <- clean_edata(smd2021)
 
-pr20201_rev <- pr2021 %>% 
-  mutate(municipality = ifelse(district == "北海道" & str_detect(municipality, "区"), 
-                               paste0("札幌市", municipality), 
-                               municipality))
-
-ele2021 <- full_join(
-  clean_edata(smd2021, "smd"), 
-  clean_edata(pr20201_rev, "pr")
-) %>% 
-  mutate(pr = ifelse(is.na(pr) & !is.na(prefecture), prefecture, pr))
+remove(list= ls()[!(ls() %in%c("ele2017", "ele2021", "mun2017", "mun2021"))])
 
 # Special cases -----------------------------------------------------------
 
-special_cases <- tribble(
-  ~prefecture, ~munname,  ~smd, ~pr,
-  "神奈川県", "川崎市中原区", "神奈川県第10区", "神奈川県",
-  "神奈川県", "川崎市中原区", "神奈川県第18区", "神奈川県",
-  "神奈川県", "川崎市高津区", "神奈川県第18区", "神奈川県",
-  "神奈川県", "川崎市宮前区", "神奈川県第18区", "神奈川県",
-  "神奈川県", "川崎市多摩区", "神奈川県第18区", "神奈川県",
-  "神奈川県", "川崎市多摩区", "神奈川県第９区", "神奈川県",
-  "新潟県", "新潟市江南区", "新潟県第１区", "新潟県",
-  "新潟県", "新潟市江南区", "新潟県第４区", "新潟県",
-  "新潟県", "新潟市北区", "新潟県第４区", "新潟県"
+ele2017 %>% filter(str_detect(munname, "・|、"))
+ele2021 %>% filter(str_detect(munname, "・|、"))
+
+ele2017 %>% filter(str_detect(munname, "中原区|高津区"))
+ele2021 %>% filter(str_detect(munname, "中原区|高津区"))
+
+# https://www.city.kawasaki.jp/nakahara/cmsfiles/contents/0000116/116076/ootoF.pdf
+# 住民基本台帳２０２０年９月末
+# 中原区人口＝259,414
+# うち大戸地区（神奈川１８区）＝82,273 (31%)
+
+special_cases_2017 <- tribble(
+  ~prefecture, ~munname,  ~district, ~vote_total, 
+  "神奈川県", "川崎市中原区", "神奈川県第10区", 69881, # Vote total is actual number
+  "神奈川県", "川崎市中原区", "神奈川県第18区", 69881/2, # Vote total is an estimate
+  "神奈川県", "川崎市高津区", "神奈川県第18区", 126979 - 69881/2 # Vote total is an estimate
 )
 
-ele2017_added <- bind_rows(
-  ele2017,
-  special_cases
-) %>% 
-  drop_na() %>% 
-  filter(!str_detect(munname, "・|、")) 
+special_cases_2021 <- tribble(
+  ~prefecture, ~munname,  ~district, ~vote_total, 
+  "神奈川県", "川崎市中原区", "神奈川県第10区", 82135, # Vote total is actual number
+  "神奈川県", "川崎市中原区", "神奈川県第18区", 82135/2, # Vote total is an estimate
+  "神奈川県", "川崎市高津区", "神奈川県第18区", 147267 - 82135/2 # Vote total is an estimate
+)
 
-ele2021_added <- bind_rows(
-  ele2021,
-  special_cases
-) %>% 
-  drop_na() %>% 
-  filter(!str_detect(munname, "・|、"))
+ele2017_added <- bind_rows(ele2017, special_cases_2017)
+ele2021_added <- bind_rows(ele2021, special_cases_2021)
 
-# Merge data --------------------------------------------------------------
+# Add municipality codes and weights  -------------------------------------
 
 e2017muncode <- ele2017_added %>% 
-  full_join(mun2017, by = c("prefecture", "munname")) 
-
-e2017muncode %>% 
-  filter(is.na(prefecture) | is.na(munname) | is.na(smd) | is.na(pr) | is.na(muncode))
+  filter(munname != "川崎市中原区・高津区") %>% 
+  full_join(mun2017, by = c("prefecture", "munname")) %>% 
+  group_by(prefecture, munname) %>% 
+  mutate(weight = vote_total / sum(vote_total)) %>% 
+  ungroup()
 
 e2021muncode <- ele2021_added %>% 
-  full_join(mun2021, by = c("prefecture", "munname"))
+  filter(munname != "川崎市中原区・高津区") %>% 
+  full_join(mun2021, by = c("prefecture", "munname")) %>% 
+  group_by(prefecture, munname) %>% 
+  mutate(weight = vote_total / sum(vote_total)) %>% 
+  ungroup()
 
-e2021muncode %>% 
-  filter(is.na(prefecture) | is.na(munname) | is.na(smd) | is.na(pr) | is.na(muncode))
+# Check that there is no missing values
+colSums(is.na(e2017muncode))
+colSums(is.na(e2021muncode))
 
 # Save data ---------------------------------------------------------------
 
-saveRDS(e2017muncode, "output/e2017muncode")
-saveRDS(e2021muncode, "output/e2021muncode")
+saveRDS(e2017muncode, "output/e2017muncode.RDS")
+saveRDS(e2017muncode, "output/e2017muncode.RDS")
 
