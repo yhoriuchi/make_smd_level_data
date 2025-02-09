@@ -81,7 +81,7 @@ get_data <- function(id, year_from = 2015){
   varcode <- out[1, "cat01_code"] # Variable code
   
   out %>% 
-    mutate(year = str_extract(調査年, "\\d+") %>% as.numeric()) %>% 
+    mutate(year = str_extract(`調査年`, "\\d+") %>% as.numeric()) %>% 
     select(area_code, 
            year, 
            value) %>% 
