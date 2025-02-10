@@ -258,7 +258,10 @@ colSums(is.na(estats_aggregated))
 
 # Save data ---------------------------------------------------------------
 
+# delete the "output" folder
+unlink("output", recursive = TRUE)
+dir.create("output")
+
 write_csv(estats_aggregated, "output/estats_aggregated.CSV")
 saveRDS(estats_aggregated, "output/estats_aggregated.RDS")
-
 
